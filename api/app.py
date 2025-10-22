@@ -1,13 +1,4 @@
-#  Flask API를 완성하세요.
-# 요구사항:
-# - 데이터 파일 경로: /app/data/data.json  (초기 내용: [])
-# - GET  /api/records   : 저장된 데이터를 JSON으로 반환
-# - POST /api/records   : {height, weight}를 받아 유효성 검사 후 누적 저장
-# - GET  /api/download  : data.json 파일 다운로드
-#
-
-
-from flask import Flask  
+from flask import Flask, jsonify, request, send_file, abort
 from pathlib import Path
 import json, os
 
@@ -22,18 +13,61 @@ if not DATA_PATH.exists():
 def healthz():
     return "ok", 200
 
-# 아래 엔드포인트들을 구현하세요.
-# @app.get("/api/records")
-# def get_records():
-#     raise NotImplementedError
+@app.get("/api/records")
+def get_records():
+    """GET /api/records : 저장된 데이터를 JSON으로 반환"""
+    try:
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        return jsonify(data)
+    except json.JSONDecodeError:
+        # 파일이 손상되었을 경우 빈 리스트 반환
+        return jsonify([])
+    except FileNotFoundError:
+        return jsonify([])
 
-# @app.post("/api/records")
-# def add_record():
-#     raise NotImplementedError
+@app.post("/api/records")
+def add_record():
+    """POST /api/records : {height, weight}를 받아 유효성 검사 후 누적 저장"""
+    payload = request.get_json()
 
-# @app.get("/api/download")
-# def download_json():
-#     raise NotImplementedError
+    # 유효성 검사
+    if not payload or 'height' not in payload or 'weight' not in payload:
+        abort(400, description="Invalid input. 'height' and 'weight' are required.")
+    
+    try:
+        # 숫자 타입인지도 확인 (선택 사항이지만 권장)
+        height = float(payload['height'])
+        weight = float(payload['weight'])
+    except ValueError:
+        abort(400, description="Invalid input. 'height' and 'weight' must be numbers.")
+
+    new_record = {"height": height, "weight": weight}
+
+    # 데이터 읽기, 추가, 저장
+    try:
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, FileNotFoundError):
+        data = [] # 파일이 비어있거나 없으면 새 리스트 시작
+        
+    data.append(new_record)
+    
+    # JSON 파일 쓰기
+    DATA_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    
+    return jsonify(new_record), 201
+
+@app.get("/api/download")
+def download_json():
+    """GET /api/download : data.json 파일 다운로드"""
+    if not DATA_PATH.exists():
+        abort(404, description="File not found.")
+        
+    return send_file(
+        DATA_PATH,
+        mimetype='application/json',
+        as_attachment=True,
+        download_name='data.json'
+    )
 
 if __name__ == "__main__":
     # 적절한 포트(예: 5000)로 0.0.0.0 에서 실행
